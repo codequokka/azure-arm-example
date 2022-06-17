@@ -1,0 +1,206 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {},
+    "functions": [],
+    "variables": {
+        "numberofVMs": 2,
+        "adminUserPublicKey": "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCwhmi1p0bvpNhM9NA5Uc5VYXLO/cFw4G3ouVqQWMHa0pPztMxJpvmUmI/NmhU1H/P1WBF8DkmRpaK3OjLpdaDssGA+ZWg4Rd2mxhtwP5pGtl9Rh1u7IdYoS3pCCjlf+8E97jRVEJwkqzoj+0U+4MIT85eI0fFOH1MG/Vn78J6Y+4cNyQHqMYtMi6/jFIzGSWZJVBiau+RKiXDMrP3LbuTk3S1oCbSevb9NTdu3STaHNEhitftxyAJCcwimaT5P/graJNw540qKneK/QVewFf5h3kK6Cu15pPUbBdDHKYzmwKLI/RSj4/nnVzvWdm3egMew1Fd6ZNDGHMVJgoATDUKt nbchk@DESKTOP-8GCKMAS"
+    },
+    "resources": [
+        {
+            "name": "as-lb-pip",
+            "type": "Microsoft.Network/publicIPAddresses",
+            "apiVersion": "2020-11-01",
+            "location": "[resourceGroup().location]",
+            "sku": {
+                "name": "Basic"
+            },
+            "tags": {
+                "displayName": "as-lb-pip"
+            },
+            "properties": {
+                "publicIPAllocationMethod": "Dynamic",
+                "dnsSettings": {
+                    "domainNameLabel": "as-lb"
+                }
+            }
+        },
+        {
+            "apiVersion": "2020-05-01",
+            "name": "as-lb",
+            "type": "Microsoft.Network/loadBalancers",
+            "location": "[resourceGroup().location]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/publicIPAddresses', 'as-lb-pip')]"
+            ],
+            "sku": {
+                "name": "Basic"
+            },
+            "properties": {
+                "frontendIPConfigurations": [
+                    {
+                        "name": "LoadBalancerFrontEnd",
+                        "properties": {
+                            "publicIPAddress": {
+                                "id": "[resourceId('Microsoft.Network/publicIPAddresses', 'as-lb-pip')]"
+                            }
+                        }
+                    }
+                ],
+                "backendAddressPools": [
+                    {
+                        "name": "BackendPool"
+                    }
+                ],
+                "loadBalancingRules": [
+                    {
+                        "name": "LBRule",
+                        "properties": {
+                            "frontendIPConfiguration": {
+                                "id": "[resourceId('Microsoft.Network/loadBalancers/frontendIPConfigurations', 'as-lb', 'LoadBalancerFrontEnd')]"
+                            },
+                            "backendAddressPool": {
+                                "id": "[resourceId('Microsoft.Network/loadBalancers/backendAddressPools', 'as-lb', 'BackendPool')]"
+                            },
+                            "protocol": "Tcp",
+                            "frontendPort": 80,
+                            "backendPort": 80,
+                            "enableFloatingIP": false,
+                            "idleTimeoutInMinutes": 5,
+                            "probe": {
+                                "id": "[resourceId('Microsoft.Network/loadBalancers/probes', 'as-lb', 'tcpProbe')]"
+                            }
+                        }
+                    }
+                ],
+                "probes": [
+                    {
+                        "name": "tcpProbe",
+                        "properties": {
+                            "protocol": "Tcp",
+                            "port": 80,
+                            "intervalInSeconds": 5,
+                            "numberOfProbes": 2
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "name": "as",
+            "type": "Microsoft.Compute/availabilitySets",
+            "apiVersion": "2021-03-01",
+            "location": "[resourceGroup().location]",
+            "tags": {
+                "displayName": "as"
+            },
+            "properties": {
+                "platformFaultDomainCount": 2,
+                "platformUpdateDomainCount": 5
+            },
+            "sku": {
+                "name": "Aligned"
+            }
+        },
+        {
+            "apiVersion": "2020-05-01",
+            "type": "Microsoft.Network/networkInterfaces",
+            "name": "[concat('as-vm', copyindex())]",
+            "location": "[resourceGroup().location]",
+            "copy": {
+                "name": "nicLoop",
+                "count": "[variables('numberofVMs')]"
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/loadBalancers/', 'as-lb')]"
+            ],
+            "properties": {
+                "ipConfigurations": [
+                    {
+                        "name": "ipconfig1",
+                        "properties": {
+                            "privateIPAllocationMethod": "Dynamic",
+                            "subnet": {
+                                "id": "[resourceId('arm-example-base-rg', 'Microsoft.Network/virtualNetworks/subnets', 'vnet', 'public')]"
+                            },
+                            "loadBalancerBackendAddressPools": [
+                                {
+                                    "id": "[resourceId('Microsoft.Network/loadBalancers/backendAddressPools', 'as-lb', 'BackendPool')]"
+                                }
+                            ]
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "apiVersion": "2019-12-01",
+            "type": "Microsoft.Compute/virtualMachines",
+            "name": "[concat('as-vm', copyindex())]",
+            "copy": {
+                "name": "virtualMachineLoop",
+                "count": "[variables('numberofVMs')]"
+            },
+            "location": "[resourceGroup().location]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Compute/availabilitySets/', 'as')]",
+                "[resourceId('Microsoft.Network/networkInterfaces/', concat('as-vm', copyindex()))]"
+            ],
+            "properties": {
+                "availabilitySet": {
+                    "id": "[resourceId('Microsoft.Compute/availabilitySets', 'as')]"
+                },
+                "hardwareProfile": {
+                    "vmSize": "Standard_B1ls"
+                },
+                "osProfile": {
+                    "computerName": "[concat('as-vm', copyindex())]",
+                    "adminUsername": "kitsuneinu",
+                    "linuxConfiguration": {
+                        "disablePasswordAuthentication": true,
+                        "ssh": {
+                            "publicKeys": [
+                                {
+                                    "path": "[concat('/home/', 'kitsuneinu', '/.ssh/authorized_keys')]",
+                                    "keyData": "[variables('adminUserPublicKey')]"
+                                }
+                            ]
+                        }
+                    }
+                },
+                "storageProfile": {
+                    "imageReference": {
+                        "publisher": "Canonical",
+                        "offer": "UbuntuServer",
+                        "sku": "16.04-LTS",
+                        "version": "latest"
+                    },
+                    "osDisk": {
+                        "name": "[concat('as-vm', copyindex(), '-osdisk')]",
+                        "caching": "ReadWrite",
+                        "createOption": "FromImage",
+                        "managedDisk": {
+                            "storageAccountType": "Standard_LRS"
+                        }
+                    }
+                },
+                "networkProfile": {
+                    "networkInterfaces": [
+                        {
+                            "id": "[resourceId('Microsoft.Network/networkInterfaces',concat('as-vm', copyindex()))]"
+                        }
+                    ]
+                },
+                "diagnosticsProfile": {
+                    "bootDiagnostics": {
+                        "enabled": true,
+                        // TODO: Get storage account name dynamically
+                        "storageUri": "[concat('http://', 'd2zmommzeymgq', 'sa', '.blob.core.windows.net')]"
+                    }
+                }
+            }
+        }
+    ],
+    "outputs": {}
+}

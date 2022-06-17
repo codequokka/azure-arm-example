@@ -1,0 +1,15 @@
+---
+- name: Setup nginx
+  hosts: private
+  gather_facts: no
+  become: true
+  tasks:
+    - name: Install the nginx
+      apt:
+        name: nginx
+        state: present
+
+    - name: Change the index page
+      copy:
+        content: "{{ inventory_hostname }}\n"
+        dest: /var/www/html/index.nginx-debian.html

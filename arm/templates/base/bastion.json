@@ -1,0 +1,117 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {},
+    "functions": [],
+    "variables": {
+        "adminUserPublicKey": "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCwhmi1p0bvpNhM9NA5Uc5VYXLO/cFw4G3ouVqQWMHa0pPztMxJpvmUmI/NmhU1H/P1WBF8DkmRpaK3OjLpdaDssGA+ZWg4Rd2mxhtwP5pGtl9Rh1u7IdYoS3pCCjlf+8E97jRVEJwkqzoj+0U+4MIT85eI0fFOH1MG/Vn78J6Y+4cNyQHqMYtMi6/jFIzGSWZJVBiau+RKiXDMrP3LbuTk3S1oCbSevb9NTdu3STaHNEhitftxyAJCcwimaT5P/graJNw540qKneK/QVewFf5h3kK6Cu15pPUbBdDHKYzmwKLI/RSj4/nnVzvWdm3egMew1Fd6ZNDGHMVJgoATDUKt nbchk@DESKTOP-8GCKMAS"
+    },
+    "resources": [
+        {
+            "name": "bastion-vm-pip",
+            "type": "Microsoft.Network/publicIPAddresses",
+            "apiVersion": "2020-11-01",
+            "location": "[resourceGroup().location]",
+            "tags": {
+                "displayName": "bastion-vm-pip"
+            },
+            "properties": {
+                "publicIPAllocationMethod": "Dynamic",
+                "dnsSettings": {
+                    "domainNameLabel": "[toLower('bastion-vm')]"
+                }
+            }
+        },
+        {
+            "name": "bastion-vm-ni",
+            "type": "Microsoft.Network/networkInterfaces",
+            "apiVersion": "2020-11-01",
+            "location": "[resourceGroup().location]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/publicIPAddresses', 'bastion-vm-pip')]"
+            ],
+            "tags": {
+                "displayName": "bastion-vm-ni"
+            },
+            "properties": {
+                "ipConfigurations": [
+                    {
+                        "name": "ipConfig1",
+                        "properties": {
+                            "privateIPAllocationMethod": "Dynamic",
+                            "publicIPAddress": {
+                                "id": "[resourceId('Microsoft.Network/publicIPAddresses', 'bastion-vm-pip')]"
+                            },
+                            "subnet": {
+                                "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', 'vnet', 'management')]"
+                            }
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "name": "bastion-vm",
+            "type": "Microsoft.Compute/virtualMachines",
+            "apiVersion": "2021-03-01",
+            "location": "[resourceGroup().location]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/networkInterfaces', 'bastion-vm-ni')]"
+            ],
+            "tags": {
+                "displayName": "bastion-vm"
+            },
+            "properties": {
+                "hardwareProfile": {
+                    "vmSize": "Standard_B1ls"
+                },
+                "osProfile": {
+                    "computerName": "bastion-vm",
+                    "adminUsername": "kitsuneinu",
+                    "linuxConfiguration": {
+                        "disablePasswordAuthentication": true,
+                        "ssh": {
+                            "publicKeys": [
+                                {
+                                    "path": "[concat('/home/', 'kitsuneinu', '/.ssh/authorized_keys')]",
+                                    "keyData": "[variables('adminUserPublicKey')]"
+                                }
+                            ]
+                        }
+                    }
+                },
+                "storageProfile": {
+                    "imageReference": {
+                        "publisher": "Canonical",
+                        "offer": "UbuntuServer",
+                        "sku": "16.04-LTS",
+                        "version": "latest"
+                    },
+                    "osDisk": {
+                        "name": "bastion-vm-osdisk",
+                        "caching": "ReadWrite",
+                        "createOption": "FromImage",
+                        "managedDisk": {
+                            "storageAccountType": "Standard_LRS"
+                        }
+                    }
+                },
+                "networkProfile": {
+                    "networkInterfaces": [
+                        {
+                            "id": "[resourceId('Microsoft.Network/networkInterfaces', 'bastion-vm-ni')]"
+                        }
+                    ]
+                },
+                "diagnosticsProfile": {
+                    "bootDiagnostics": {
+                        "enabled": true,
+                        // TODO: Get storage account name dynamically
+                        "storageUri": "[concat('http://', 'd2zmommzeymgq', 'sa', '.blob.core.windows.net')]"
+                    }
+                }
+            }
+        }
+    ],
+    "outputs": {}
+}

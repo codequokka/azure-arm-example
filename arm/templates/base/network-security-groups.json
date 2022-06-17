@@ -1,0 +1,58 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {},
+    "functions": [],
+    "variables": {},
+    "resources": [
+        {
+            "name": "management-nsg",
+            "type": "Microsoft.Network/networkSecurityGroups",
+            "apiVersion": "2020-11-01",
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "securityRules": [
+                    {
+                        "name": "allow-ssh-inbound",
+                        "properties": {
+                            "description": "Allow ssh inbound traffic",
+                            "protocol": "Tcp",
+                            "direction": "Inbound",
+                            "sourceAddressPrefix": "*",
+                            "sourcePortRange": "*",
+                            "destinationAddressPrefix": "*",
+                            "destinationPortRange": "22",
+                            "priority": 100,
+                            "access": "Allow"
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "name": "public-nsg",
+            "type": "Microsoft.Network/networkSecurityGroups",
+            "apiVersion": "2020-11-01",
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "securityRules": [
+                    {
+                        "name": "allow-http-inbound",
+                        "properties": {
+                            "description": "Allow http inbound traffic",
+                            "protocol": "Tcp",
+                            "direction": "Inbound",
+                            "sourceAddressPrefix": "*",
+                            "sourcePortRange": "*",
+                            "destinationAddressPrefix": "*",
+                            "destinationPortRange": "80",
+                            "priority": 100,
+                            "access": "Allow"
+                        }
+                    }
+                ]
+            }
+        }
+    ],
+    "outputs": {}
+}

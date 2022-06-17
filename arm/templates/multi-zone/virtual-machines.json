@@ -1,0 +1,188 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {},
+  "variables": {
+    "numberofVMs": 2,
+    "adminUserPublicKey": "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCwhmi1p0bvpNhM9NA5Uc5VYXLO/cFw4G3ouVqQWMHa0pPztMxJpvmUmI/NmhU1H/P1WBF8DkmRpaK3OjLpdaDssGA+ZWg4Rd2mxhtwP5pGtl9Rh1u7IdYoS3pCCjlf+8E97jRVEJwkqzoj+0U+4MIT85eI0fFOH1MG/Vn78J6Y+4cNyQHqMYtMi6/jFIzGSWZJVBiau+RKiXDMrP3LbuTk3S1oCbSevb9NTdu3STaHNEhitftxyAJCcwimaT5P/graJNw540qKneK/QVewFf5h3kK6Cu15pPUbBdDHKYzmwKLI/RSj4/nnVzvWdm3egMew1Fd6ZNDGHMVJgoATDUKt nbchk@DESKTOP-8GCKMAS"
+  },
+  "resources": [
+    {
+      "name": "multi-zone-lb-pip",
+      "type": "Microsoft.Network/publicIPAddresses",
+      "apiVersion": "2020-11-01",
+      "location": "[resourceGroup().location]",
+      "sku": {
+        "name": "Standard"
+      },
+      "tags": {
+        "displayName": "multi-zone-lb-pip"
+      },
+      "properties": {
+        "publicIPAllocationMethod": "Static",
+        "dnsSettings": {
+          "domainNameLabel": "multi-zone-lb"
+        }
+      }
+    },
+    {
+      "apiVersion": "2020-05-01",
+      "name": "multi-zone-lb",
+      "type": "Microsoft.Network/loadBalancers",
+      "location": "[resourceGroup().location]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/publicIPAddresses', 'multi-zone-lb-pip')]"
+      ],
+      "sku": {
+        "name": "Standard"
+      },
+      "properties": {
+        "frontendIPConfigurations": [
+          {
+            "name": "LoadBalancerFrontEnd",
+            "properties": {
+              "publicIPAddress": {
+                "id": "[resourceId('Microsoft.Network/publicIPAddresses', 'multi-zone-lb-pip')]"
+              }
+            }
+          }
+        ],
+        "backendAddressPools": [
+          {
+            "name": "BackendPool"
+          }
+        ],
+        "inboundNatRules": [],
+        "loadbalancingRules": [
+          {
+            "name": "LBRule",
+            "properties": {
+              "frontendIPConfiguration": {
+                "id": "[resourceId('Microsoft.Network/loadBalancers/frontendIPConfigurations', 'multi-zone-lb', 'LoadBalancerFrontEnd')]"
+              },
+              "backendaddressPool": {
+                "id": "[resourceId('Microsoft.Network/loadBalancers/backendAddressPools', 'multi-zone-lb', 'BackendPool')]"
+              },
+              "protocol": "Tcp",
+              "frontendPort": 80,
+              "backendPort": 80,
+              "enableFloatingIP": false,
+              "idleTimeoutInMinutes": 5,
+              "probe": {
+                "id": "[resourceId('Microsoft.Network/loadBalancers/probes', 'multi-zone-lb', 'tcpProbe')]"
+              }
+            }
+          }
+        ],
+        "probes": [
+          {
+            "name": "tcpProbe",
+            "properties": {
+              "protocol": "Tcp",
+              "port": 80,
+              "intervalInSeconds": 5,
+              "numberOfProbes": "[variables('numberofVMs')]"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "2020-05-01",
+      "type": "Microsoft.Network/networkInterfaces",
+      "name": "[concat('multi-zone-vm', copyindex())]",
+      "location": "[resourceGroup().location]",
+      "copy": {
+        "name": "nicLoop",
+        "count": "[variables('numberofVMs')]"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/loadBalancers/', 'multi-zone-lb')]"
+      ],
+      "properties": {
+        "ipConfigurations": [
+          {
+            "name": "ipconfig1",
+            "properties": {
+              "privateIPAllocationMethod": "Dynamic",
+              "subnet": {
+                "id": "[resourceId('arm-example-base-rg', 'Microsoft.Network/virtualNetworks/subnets', 'vnet', 'public')]"
+              },
+              "loadBalancerBackendAddressPools": [
+                {
+                  "id": "[resourceId('Microsoft.Network/loadBalancers/backendAddressPools', 'multi-zone-lb', 'BackendPool')]"
+                }
+              ],
+              "loadBalancerInboundNatRules": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "2019-12-01",
+      "type": "Microsoft.Compute/virtualMachines",
+      "name": "[concat('multi-zone-vm', copyindex())]",
+      "zones": "[split(string(add(mod(copyIndex(),3),1)), ',')]",
+      "copy": {
+        "name": "virtualMachineLoop",
+        "count": "[variables('numberofVMs')]"
+      },
+      "location": "[resourceGroup().location]",
+      "dependsOn": [
+        "nicLoop"
+      ],
+      "properties": {
+        "hardwareProfile": {
+          "vmSize": "Standard_B1ls"
+        },
+        "osProfile": {
+          "computerName": "[concat('multi-zone-vm', copyindex())]",
+          "adminUsername": "kitsuneinu",
+          "linuxConfiguration": {
+            "disablePasswordAuthentication": true,
+            "ssh": {
+              "publicKeys": [
+                {
+                  "path": "[concat('/home/', 'kitsuneinu', '/.ssh/authorized_keys')]",
+                  "keyData": "[variables('adminUserPublicKey')]"
+                }
+              ]
+            }
+          }
+        },
+        "storageProfile": {
+          "imageReference": {
+            "publisher": "Canonical",
+            "offer": "UbuntuServer",
+            "sku": "16.04-LTS",
+            "version": "latest"
+          },
+          "osDisk": {
+            "name": "[concat('multi-zone-vm', copyindex(), '-osdisk')]",
+            "caching": "ReadWrite",
+            "createOption": "FromImage",
+            "managedDisk": {
+              "storageAccountType": "Standard_LRS"
+            }
+          }
+        },
+        "networkProfile": {
+          "networkInterfaces": [
+            {
+              "id": "[resourceId('Microsoft.Network/networkInterfaces',concat('multi-zone-vm', copyindex()))]"
+            }
+          ]
+        },
+        "diagnosticsProfile": {
+          "bootDiagnostics": {
+            "enabled": true,
+            // TODO: Get storage account name dynamically
+            "storageUri": "[concat('http://', 'd2zmommzeymgq', 'sa', '.blob.core.windows.net')]"
+          }
+        }
+      }
+    }
+  ],
+  "outputs": {}
+}
